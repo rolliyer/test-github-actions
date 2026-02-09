@@ -116,9 +116,3 @@ To limit concurrency, the `sfdc_bronze_ingestion` DAG uses a pool.
 ## Customization
 
 To add, remove, or modify the Salesforce objects being processed, simply edit the `dags/sfdc_bronze_config.yaml` file. The `sfdc_bronze_ingestion` DAG will automatically pick up the changes on its next run.
-
-
-
-
-User
-2026-01-27T05:01:19+0000
