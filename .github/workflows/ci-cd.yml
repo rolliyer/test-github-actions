@@ -56,7 +56,7 @@ jobs:
 
       - name: Deploy dags/ and plugins/ to Dev bucket
         run: |
-          DEV_BUCKET= ${{ secrets.DEV_GCS_BUCKET }}
+          DEV_BUCKET="${{ secrets.DEV_GCS_BUCKET }}"
           echo "Deploying to Dev bucket: $DEV_BUCKET"
           
           # Deploy dags directory
