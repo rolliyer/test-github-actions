@@ -55,8 +55,9 @@ jobs:
           export_default_credentials: true
 
       - name: Deploy dags/ and plugins/ to Dev bucket
+        env:
+          DEV_BUCKET: ${{ secrets.DEV_GCS_BUCKET }}
         run: |
-          DEV_BUCKET="${{ secrets.DEV_GCS_BUCKET }}"
           echo "Deploying to Dev bucket: $DEV_BUCKET"
           
           # Deploy dags directory
@@ -99,8 +100,9 @@ jobs:
           export_default_credentials: true
 
       - name: Deploy dags/ and plugins/ to Staging bucket
+        env:
+          STG_BUCKET: ${{ secrets.STG_GCS_BUCKET }}
         run: |
-          STG_BUCKET="${{ secrets.STG_GCS_BUCKET }}"
           echo "Deploying to Staging bucket: $STG_BUCKET"
           
           # Deploy dags directory
@@ -143,8 +145,9 @@ jobs:
           export_default_credentials: true
 
       - name: Deploy dags/ and plugins/ to Production bucket
+        env:
+          PROD_BUCKET: ${{ secrets.PROD_GCS_BUCKET }}
         run: |
-          PROD_BUCKET="${{ secrets.PROD_GCS_BUCKET }}"
           echo "Deploying to Production bucket: $PROD_BUCKET"
           
           # Deploy dags directory
