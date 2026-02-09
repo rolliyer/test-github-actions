@@ -1,0 +1,33 @@
+# sfdc_sales_dbt_dag_config.yaml
+# This file configures the sfdc_sales_dbt_dag DAG.
+dbt_cloud_conn_id: "dbt_cloud_conn"
+dbt_account_id: 281509336449088
+schedule: "25 5,17 * * *"
+environments:
+  dev:
+    - task_name: "trigger_silver_sfdc_sales"
+      job_id: 281509336451816
+    - task_name: "trigger_snapshot"
+      job_id: 281509336451819
+    - task_name: "trigger_gold_sfdc_sales"
+      job_id: 281509336451818
+    - task_name: "trigger_test"
+      job_id: 281509336451821
+  stg:
+    - task_name: "trigger_silver_sfdc_sales"
+      job_id: 281509336452696
+    - task_name: "trigger_snapshot"
+      job_id: 281509336452697
+    - task_name: "trigger_gold_sfdc_sales"
+      job_id: 281509336452698
+    - task_name: "trigger_test"
+      job_id: 281509336452699
+  prod:
+    - task_name: "trigger_silver_sfdc_sales"
+      job_id: 200000000000001
+    - task_name: "trigger_snapshot"
+      job_id: 200000000000002
+    - task_name: "trigger_gold_sfdc_sales"
+      job_id: 200000000000003
+    - task_name: "trigger_test"
+      job_id: 200000000000005

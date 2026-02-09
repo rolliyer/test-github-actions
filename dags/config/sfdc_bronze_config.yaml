@@ -1,0 +1,60 @@
+# sfdc_bronze_config.yaml
+# This file configures the sfdc_bronze_ingestion DAG.
+# Each item in the 'sfdc_objects' list will generate an extract-and-ingest
+# task chain in the Airflow DAG.
+
+#### -- Usage of 'object_name' and 'cloudrun_object_type' -- ####
+# 'object_name' is used in the payload for the Salesforce extraction API.
+# 'cloudrun_object_type' is passed as an argument to the Cloud Run ingestion job.
+
+project_id: "ent-data-ingestion"
+job_name: "sfdc-bq-bronze-ingestion"
+bucket_name: "edp-raw-landing"
+region: "us-central1"
+schedule: "0 6,18 * * *"
+record_timestamp_column: "SystemModstamp"
+sfdc_objects:
+  - name: "opportunity"
+    object_name: "opportunity"
+    cloudrun_object_type: "opportunity"
+ 
+  - name: "account"
+    object_name: "account"
+    cloudrun_object_type: "account"
+ 
+  - name: "lead"
+    object_name: "lead"
+    cloudrun_object_type: "lead"
+ 
+  - name: "user"
+    object_name: "user"
+    cloudrun_object_type: "user"
+ 
+  - name: "contact"
+    object_name: "contact"
+    cloudrun_object_type: "contact"
+  
+  - name: "leadhistory"
+    object_name: "leadhistory"
+    record_timestamp_column: "CreatedDate"
+    cloudrun_object_type: "leadhistory"
+  
+  - name: "opportunityhistory"
+    object_name: "opportunityhistory"
+    cloudrun_object_type: "opportunityhistory"
+  
+  - name: "opportunitylineitem"
+    object_name: "opportunitylineitem"
+    cloudrun_object_type: "opportunitylineitem"
+ 
+  - name: "recordtype"
+    object_name: "recordtype"
+    cloudrun_object_type: "recordtype"
+  
+  - name: "datedconversionrate"
+    object_name: "datedconversionrate"
+    cloudrun_object_type: "datedconversionrate"
+
+  - name: "deleteevent"
+    object_name: "deleteevent"
+    cloudrun_object_type: "deleteevent"

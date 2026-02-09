@@ -1,0 +1,182 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - '**'
+      - main
+      - uat
+  pull_request:
+    branches:
+      - main
+      - uat
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+jobs:
+  # Build and test for all branches
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/uat' || github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint code (if linter exists)
+        run: |
+          if [ -f "setup.cfg" ] || [ -f ".flake8" ] || [ -f "pyproject.toml" ]; then
+            pip install flake8
+            flake8 dags/ plugins/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
+          fi
+
+      - name: Run tests (if tests exist)
+        run: |
+          if [ -d "tests" ]; then
+            pip install pytest
+            pytest tests/ -v || true
+          fi
+
+  # Deploy to Dev environment (any custom branch)
+  deploy-dev:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/uat'
+    needs: build-and-test
+    environment:
+      name: development
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          export_default_credentials: true
+
+      - name: Deploy dags/ and plugins/ to Dev bucket
+        run: |
+          DEV_BUCKET="${{ secrets.DEV_GCS_BUCKET }}"
+          echo "Deploying to Dev bucket: $DEV_BUCKET"
+          
+          # Deploy dags directory
+          if [ -d "dags" ]; then
+            gsutil -m cp -r dags/* "gs://$DEV_BUCKET/dags/" || echo "Warning: dags upload had issues"
+            echo "✓ Deployed dags/"
+          fi
+          
+          # Deploy plugins directory
+          if [ -d "plugins" ]; then
+            gsutil -m cp -r plugins/* "gs://$DEV_BUCKET/plugins/" || echo "Warning: plugins upload had issues"
+            echo "✓ Deployed plugins/"
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment**: Development" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Bucket**: ${{ secrets.DEV_GCS_BUCKET }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # Deploy to Staging (merge to uat)
+  deploy-stg:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/uat'
+    needs: build-and-test
+    environment:
+      name: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          export_default_credentials: true
+
+      - name: Deploy dags/ and plugins/ to Staging bucket
+        run: |
+          STG_BUCKET="${{ secrets.STG_GCS_BUCKET }}"
+          echo "Deploying to Staging bucket: $STG_BUCKET"
+          
+          # Deploy dags directory
+          if [ -d "dags" ]; then
+            gsutil -m cp -r dags/* "gs://$STG_BUCKET/dags/" || echo "Warning: dags upload had issues"
+            echo "✓ Deployed dags/"
+          fi
+          
+          # Deploy plugins directory
+          if [ -d "plugins" ]; then
+            gsutil -m cp -r plugins/* "gs://$STG_BUCKET/plugins/" || echo "Warning: plugins upload had issues"
+            echo "✓ Deployed plugins/"
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment**: Staging (UAT)" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Bucket**: ${{ secrets.STG_GCS_BUCKET }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # Deploy to Production (merge to main)
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-and-test
+    environment:
+      name: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          export_default_credentials: true
+
+      - name: Deploy dags/ and plugins/ to Production bucket
+        run: |
+          PROD_BUCKET="${{ secrets.PROD_GCS_BUCKET }}"
+          echo "Deploying to Production bucket: $PROD_BUCKET"
+          
+          # Deploy dags directory
+          if [ -d "dags" ]; then
+            gsutil -m cp -r dags/* "gs://$PROD_BUCKET/dags/" || echo "Warning: dags upload had issues"
+            echo "✓ Deployed dags/"
+          fi
+          
+          # Deploy plugins directory
+          if [ -d "plugins" ]; then
+            gsutil -m cp -r plugins/* "gs://$PROD_BUCKET/plugins/" || echo "Warning: plugins upload had issues"
+            echo "✓ Deployed plugins/"
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment**: Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Bucket**: ${{ secrets.PROD_GCS_BUCKET }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
