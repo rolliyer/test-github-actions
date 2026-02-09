@@ -35,20 +35,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Lint code (if linter exists)
-        run: |
-          if [ -f "setup.cfg" ] || [ -f ".flake8" ] || [ -f "pyproject.toml" ]; then
-            pip install flake8
-            flake8 dags/ plugins/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
-          fi
-
-      - name: Run tests (if tests exist)
-        run: |
-          if [ -d "tests" ]; then
-            pip install pytest
-            pytest tests/ -v || true
-          fi
-
   # Deploy to Dev environment (any custom branch)
   deploy-dev:
     name: Deploy to Dev

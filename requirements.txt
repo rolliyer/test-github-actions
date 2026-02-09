@@ -1,0 +1,2 @@
+apache-airflow-providers-http
+PyYAML==6.0.1
