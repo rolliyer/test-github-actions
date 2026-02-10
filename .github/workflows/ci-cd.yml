@@ -50,20 +50,19 @@ jobs:
       - name: 'Authenticate to Google Cloud'
         uses: 'google-github-actions/auth@v2'
         with:
-          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT_KEY_DEV }}'
-          project_id: ${{ secrets.GCP_PROJECT_ID_DEV }}
+          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}'
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID_DEV }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
 
       - name: Deploy dags/ and plugins/ to Dev bucket
         env:
-          DEV_BUCKET: ${{ secrets.DEV_GCS_BUCKET_DEV }}
+          DEV_BUCKET: ${{ secrets.DEV_GCS_BUCKET }}
         run: |
-          echo "Debugging: DEV_BUCKET is '$DEV_BUCKET'"
           echo "Deploying to Dev bucket: $DEV_BUCKET"
           
           # Deploy dags directory
@@ -83,7 +82,7 @@ jobs:
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "**Environment**: Development" >> $GITHUB_STEP_SUMMARY
           echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Bucket**: ${{ secrets.DEV_GCS_BUCKET_DEV }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Bucket**: ${{ secrets.DEV_GCS_BUCKET }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
 
   # Deploy to Staging (merge to uat)
@@ -101,20 +100,19 @@ jobs:
       - name: 'Authenticate to Google Cloud'
         uses: 'google-github-actions/auth@v2'
         with:
-          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT_KEY_STG }}'
-          project_id: ${{ secrets.GCP_PROJECT_ID_STG }}
+          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}'
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID_STG }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
 
       - name: Deploy dags/ and plugins/ to Staging bucket
         env:
-          STG_BUCKET: ${{ secrets.STG_GCS_BUCKET_STG }}
+          STG_BUCKET: ${{ secrets.STG_GCS_BUCKET }}
         run: |
-          echo "Debugging: STG_BUCKET is '$STG_BUCKET'"
           echo "Deploying to Staging bucket: $STG_BUCKET"
           
           # Deploy dags directory
@@ -134,7 +132,7 @@ jobs:
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "**Environment**: Staging (UAT)" >> $GITHUB_STEP_SUMMARY
           echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Bucket**: ${{ secrets.STG_GCS_BUCKET_STG }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Bucket**: ${{ secrets.STG_GCS_BUCKET }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
 
   # Deploy to Production (merge to main)
@@ -152,20 +150,19 @@ jobs:
       - name: 'Authenticate to Google Cloud'
         uses: 'google-github-actions/auth@v2'
         with:
-          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT_KEY_PROD }}'
-          project_id: ${{ secrets.GCP_PROJECT_ID_PROD }}
+          credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}'
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID_PROD }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
 
       - name: Deploy dags/ and plugins/ to Production bucket
         env:
-          PROD_BUCKET: ${{ secrets.PROD_GCS_BUCKET_PROD }}
+          PROD_BUCKET: ${{ secrets.PROD_GCS_BUCKET }}
         run: |
-          echo "Debugging: PROD_BUCKET is '$PROD_BUCKET'"
           echo "Deploying to Production bucket: $PROD_BUCKET"
           
           # Deploy dags directory
@@ -185,5 +182,5 @@ jobs:
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "**Environment**: Production" >> $GITHUB_STEP_SUMMARY
           echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Bucket**: ${{ secrets.PROD_GCS_BUCKET_PROD }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Bucket**: ${{ secrets.PROD_GCS_BUCKET }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
