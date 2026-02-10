@@ -63,6 +63,7 @@ jobs:
         env:
           DEV_BUCKET: ${{ secrets.DEV_GCS_BUCKET_DEV }}
         run: |
+          echo "Debugging: DEV_BUCKET is '$DEV_BUCKET'"
           echo "Deploying to Dev bucket: $DEV_BUCKET"
           
           # Deploy dags directory
@@ -113,6 +114,7 @@ jobs:
         env:
           STG_BUCKET: ${{ secrets.STG_GCS_BUCKET_STG }}
         run: |
+          echo "Debugging: STG_BUCKET is '$STG_BUCKET'"
           echo "Deploying to Staging bucket: $STG_BUCKET"
           
           # Deploy dags directory
@@ -163,6 +165,7 @@ jobs:
         env:
           PROD_BUCKET: ${{ secrets.PROD_GCS_BUCKET_PROD }}
         run: |
+          echo "Debugging: PROD_BUCKET is '$PROD_BUCKET'"
           echo "Deploying to Production bucket: $PROD_BUCKET"
           
           # Deploy dags directory
