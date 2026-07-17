@@ -76,14 +76,14 @@ flowchart TD
         direction TB
         F0["fact_cb_subscription_item_snapshot\n(incremental — item line MRR)"]
         F1["fact_cb_subscription_daily_snapshot\n(incremental by day — today's active subs)"]
-        F2["fact_cb_active_subscription_month\n(incremental by month — IMMUTABLE close)"]
+        F2["fact_cb_subscription_month_close\n(incremental by month — IMMUTABLE close)"]
 
         subgraph SEED_LAYER["Seeds"]
             SD1["cb_may_2026_active_seed\n(May baseline — Finance master sheet)"]
             SD2["cb_subscription_correction\n(Finance corrections — add/remove)"]
         end
 
-        F3["fact_cb_active_subscription_month_official\n(TABLE — corrections applied — ALL reports read here)"]
+        F3["fact_cb_subscription_month_close_official\n(TABLE — corrections applied — ALL reports read here)"]
         F4["fact_cb_subscription_month\n(TABLE — subscription dim attrs point-in-time)"]
         F5["fact_cb_customer_month\n(TABLE — customer dim attrs point-in-time)"]
         F6["fact_cb_subscription_mrr_month\n(TABLE — MRR by category point-in-time)"]
@@ -166,12 +166,15 @@ Captures every billing-active subscription (status IN active/non_renewing/paused
 ### 4.4 Monthly Close — Immutable Base
 
 ```
-fact_cb_active_subscription_month
+fact_cb_subscription_month_close
   Grain: (subscription_id, source_instance, month_end_date)
   Partition: month_end_date (month)
   Materialization: incremental (insert_overwrite, full_refresh=false)
-  Run cadence: 3rd of each month
+  Run cadence: daily (Airflow) — idempotent overwrite of the prior month's partition on every run
+  Statuses included: active, non_renewing, paused (NOT filtered to billing-active only)
 ```
+
+**Why paused subscriptions are included:** A subscription that was paused in month M−1 has `is_active_billing=FALSE`. The new-customer anti-join requires `is_active_billing=TRUE` in the prior month. If that prior row is missing entirely (rather than present with `is_active_billing=FALSE`), we cannot distinguish "never seen before" from "was paused". Including paused rows lets the anti-join correctly flag Paused→Active as a new customer.
 
 Close logic:
 1. `period` CTE computes `DATE_SUB(DATE_TRUNC(CURRENT_DATE(), MONTH), INTERVAL 1 DAY)` = last day of prior month.
@@ -187,13 +190,13 @@ Close logic:
 ### 4.5 Finance Correction Layer — Official
 
 ```
-fact_cb_active_subscription_month_official
+fact_cb_subscription_month_close_official
   Grain: (subscription_id, source_instance, month_end_date)
   Materialization: TABLE (full rebuild on every run)
-  Reads from: fact_cb_active_subscription_month + cb_subscription_correction seed
+  Reads from: fact_cb_subscription_month_close + cb_subscription_correction seed
 ```
 
-This is the **authoritative active-subscription record**. Every downstream model reads from this — never directly from the base.
+This is the **authoritative monthly-close subscription record**. Every downstream model reads from this — never directly from the base.
 
 Two correction types:
 - `action='remove'` — subscription is excluded from the closed month (e.g. Finance reversed a charge)
@@ -205,7 +208,7 @@ Two correction types:
 
 ### 4.6 Monthly Dimension Locks
 
-These three TABLE models read from `fact_cb_active_subscription_month_official` and perform point-in-time SCD2 joins. They lock dimension attributes at month-end so downstream analytics don't have to.
+These three TABLE models read from `fact_cb_subscription_month_close_official` and perform point-in-time SCD2 joins. They lock dimension attributes at month-end so downstream analytics don't have to.
 
 | Model | SCD2 Source | What It Locks |
 |---|---|---|
@@ -264,8 +267,8 @@ discount_pct_of_gross  = recurring_discount_lc / total_gross_mrr_lc × 100
 
 ```sql
 -- Anti-join: billing-active in current month, not in prior month
-FROM fact_cb_active_subscription_month_official AS curr
-LEFT JOIN fact_cb_active_subscription_month_official AS prev
+FROM fact_cb_subscription_month_close_official AS curr
+LEFT JOIN fact_cb_subscription_month_close_official AS prev
     ON curr.subscription_id = prev.subscription_id
    AND curr.source_instance = prev.source_instance
    AND prev.month_end_date = DATE_SUB(DATE_TRUNC(curr.month_end_date, MONTH), INTERVAL 1 DAY)
@@ -289,24 +292,21 @@ Then joins to:
 ```mermaid
 sequenceDiagram
     participant Orchestrator
-    participant DailyJob as Daily Job (every day)
-    participant MonthlyJob as Monthly Job (3rd of month)
+    participant DailyJob as Daily Airflow Run (every day)
     participant BQ as BigQuery
 
     loop Every day (incl. month-end)
         Orchestrator ->> DailyJob: trigger
         DailyJob ->> BQ: INSERT INTO fact_cb_subscription_daily_snapshot<br/>PARTITION BY CURRENT_DATE()<br/>WHERE status IN (active, non_renewing, paused)
+        DailyJob ->> BQ: SELECT MAX(snapshot_date) FROM daily_snapshot<br/>WHERE snapshot_date BETWEEN prior-month-start AND prior-month-end
+        BQ -->> DailyJob: close_snapshot_date (MAX available — fallback if last-day failed)
+        DailyJob ->> BQ: INSERT OVERWRITE prior-month partition<br/>INTO fact_cb_subscription_month_close<br/>(idempotent — same partition written every day until month rolls)
+        DailyJob ->> BQ: REBUILD fact_cb_subscription_month_close_official<br/>(corrections applied on top)
+        DailyJob ->> BQ: REBUILD fact_cb_subscription_month<br/>fact_cb_customer_month<br/>fact_cb_subscription_mrr_month
+        DailyJob ->> BQ: REBUILD chargebee_new_customers
     end
 
-    Note over Orchestrator,BQ: Month-end arrives (e.g. June 30).<br/>Job may succeed or fail.
-
-    Orchestrator ->> MonthlyJob: trigger on 3rd of next month
-    MonthlyJob ->> BQ: SELECT MAX(snapshot_date) FROM daily_snapshot<br/>WHERE snapshot_date BETWEEN June 1 AND June 30
-    BQ -->> MonthlyJob: close_snapshot_date = 2026-06-30 (or 29th if 30th failed)
-    MonthlyJob ->> BQ: INSERT OVERWRITE month_end_date=2026-06-30 partition<br/>INTO fact_cb_active_subscription_month
-    MonthlyJob ->> BQ: REBUILD fact_cb_active_subscription_month_official<br/>(corrections applied on top)
-    MonthlyJob ->> BQ: REBUILD fact_cb_subscription_month<br/>fact_cb_customer_month<br/>fact_cb_subscription_mrr_month
-    MonthlyJob ->> BQ: REBUILD chargebee_new_customers
+    Note over Orchestrator,BQ: Month-end close is just the daily run that happens to run<br/>after the last snapshot of the month lands. No separate trigger.<br/>If the June 30 snapshot is missing, the July 1 run uses MAX = June 29.
 ```
 
 ---
@@ -319,7 +319,7 @@ sequenceDiagram
     participant DataTeam as Data Team
     participant Seed as cb_subscription_correction.csv
     participant dbt as dbt run
-    participant Official as fact_cb_active_subscription_month_official
+    participant Official as fact_cb_subscription_month_close_official
     participant Downstream as Downstream Facts + Analytics
 
     Finance ->> DataTeam: "Sub X shouldn't be in June — they cancelled before month-end"
@@ -379,7 +379,7 @@ is_deferred_start = (
 |---|---|
 | `models/silver/conformed/cb_subscription.sql` | Removed 8 customer columns (Critical 1) |
 | `snapshots/snp_cb_subscription.sql` | Removed customer columns; changed check_cols to explicit list excluding chargebee_mrr_lc (Critical 2) |
-| `models/gold/facts/finance/fact_cb_active_subscription_month.sql` | Full rewrite — new close logic with daily snapshot fallback + seed union |
+| `models/gold/facts/finance/fact_cb_subscription_month_close.sql` | Full rewrite — new close logic with daily snapshot fallback + seed union |
 | `models/gold/analytics/finance/chargebee_new_customers.sql` | Refactored — removed 6 heavy CTEs; now uses 3 equality joins to new monthly facts |
 | `models/gold/facts/finance/schema.yml` | Added close_snapshot_date column; documented all new models |
 | `seeds/finance/schema.yml` | Added full documentation for cb_subscription_correction seed |
@@ -390,7 +390,7 @@ is_deferred_start = (
 | File | Purpose |
 |---|---|
 | `models/gold/facts/finance/fact_cb_subscription_daily_snapshot.sql` | Daily active-sub snapshot (resilience layer) |
-| `models/gold/facts/finance/fact_cb_active_subscription_month_official.sql` | Authoritative monthly fact with correction overlay |
+| `models/gold/facts/finance/fact_cb_subscription_month_close_official.sql` | Authoritative monthly fact with correction overlay |
 | `models/gold/facts/finance/fact_cb_subscription_month.sql` | Subscription dim attrs locked per month |
 | `models/gold/facts/finance/fact_cb_customer_month.sql` | Customer dim attrs locked per month |
 | `models/gold/facts/finance/fact_cb_subscription_mrr_month.sql` | MRR by category pre-computed per month |
@@ -403,8 +403,8 @@ is_deferred_start = (
 | Model | Strategy | Why |
 |---|---|---|
 | `fact_cb_subscription_daily_snapshot` | Incremental, insert_overwrite by day | Accumulates daily history; idempotent re-run |
-| `fact_cb_active_subscription_month` | Incremental, insert_overwrite by month, full_refresh=false | Immutable once written; seed always re-emits May |
-| `fact_cb_active_subscription_month_official` | TABLE | Full rebuild guarantees corrections always cascade |
+| `fact_cb_subscription_month_close` | Incremental, insert_overwrite by month, full_refresh=false | Runs daily (Airflow) — idempotent overwrite of prior-month partition. `full_refresh=false` protects historical partitions |
+| `fact_cb_subscription_month_close_official` | TABLE | Full rebuild guarantees corrections always cascade |
 | `fact_cb_subscription_month` | TABLE | Must reflect latest corrections on every run |
 | `fact_cb_customer_month` | TABLE | Must reflect latest corrections on every run |
 | `fact_cb_subscription_mrr_month` | TABLE | Must reflect latest corrections on every run |
@@ -426,9 +426,9 @@ Bronze
             │    └─ snp_cb_subscription_item
             │         └─ fact_cb_subscription_item_snapshot (incremental)
             │
-            ├─ fact_cb_subscription_daily_snapshot (incremental — daily)
-            │    └─ fact_cb_active_subscription_month (incremental — monthly close)
-            │         └─ fact_cb_active_subscription_month_official (table — corrections)
+            ├─ fact_cb_subscription_daily_snapshot (incremental — daily, runs every Airflow run)
+            │    └─ fact_cb_subscription_month_close (incremental — prior-month close, also runs every Airflow run, idempotent)
+            │         └─ fact_cb_subscription_month_close_official (table — corrections)
             │              ├─ fact_cb_subscription_month (table)
             │              ├─ fact_cb_customer_month (table)
             │              └─ fact_cb_subscription_mrr_month (table)
